@@ -58,6 +58,7 @@ export default function GamePlay() {
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [countdown, setCountdown] = useState(5)
   const [isValidating, setIsValidating] = useState(false)
+  const [revealingAnswer, setRevealingAnswer] = useState(false)
 
   // Countdown timer effect
   useEffect(() => {
@@ -274,9 +275,16 @@ export default function GamePlay() {
       const correctOption = result.isCorrect
       const points = result.points
 
+      // Add delay for animation effect
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      setRevealingAnswer(true)
       setAnswered(true)
       setIsCorrect(correctOption)
       setCorrectAnswer(result.correctOptionId)
+
+      // Wait a bit before updating score for visual effect
+      await new Promise(resolve => setTimeout(resolve, 400))
 
       if (correctOption) {
         setScore(score + points)
@@ -292,6 +300,9 @@ export default function GamePlay() {
           }
           sessionStorage.setItem('gameState', JSON.stringify(gameState))
         }
+        
+        // Add delay before showing ad
+        await new Promise(resolve => setTimeout(resolve, 800))
         setShowAd(true)
         setShowRetryButton(false)
         setCountdown(5)
@@ -300,6 +311,7 @@ export default function GamePlay() {
       console.error("Error validating answer:", error)
       alert("Failed to submit answer. Please try again.")
       setSelectedAnswer(null)
+      setRevealingAnswer(false)
     } finally {
       setIsValidating(false)
     }
@@ -323,6 +335,7 @@ export default function GamePlay() {
       setShowAd(false)
       setShowRetryButton(false)
       setCountdown(5)
+      setRevealingAnswer(false)
     } else {
       setGameFinished(true)
     }
@@ -437,7 +450,119 @@ export default function GamePlay() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
+    <>
+      <style jsx global>{`
+        @keyframes shimmer {
+          100% {
+            transform: translateX(200%);
+          }
+        }
+
+        @keyframes correctPulse {
+          0% {
+            transform: scale(1);
+          }
+          50% {
+            transform: scale(1.03);
+            box-shadow: 0 0 30px rgba(34, 197, 94, 0.4);
+          }
+          100% {
+            transform: scale(1.02);
+          }
+        }
+
+        @keyframes wrongShake {
+          0%, 100% {
+            transform: translateX(0);
+          }
+          25% {
+            transform: translateX(-10px);
+          }
+          75% {
+            transform: translateX(10px);
+          }
+        }
+
+        @keyframes particle-1 {
+          0% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-20px, -20px) scale(0);
+            opacity: 0;
+          }
+        }
+
+        @keyframes particle-2 {
+          0% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(20px, -20px) scale(0);
+            opacity: 0;
+          }
+        }
+
+        @keyframes particle-3 {
+          0% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-20px, 20px) scale(0);
+            opacity: 0;
+          }
+        }
+
+        @keyframes particle-4 {
+          0% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(20px, 20px) scale(0);
+            opacity: 0;
+          }
+        }
+
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+
+        .animate-particle-1 {
+          animation: particle-1 0.6s ease-out forwards;
+        }
+
+        .animate-particle-2 {
+          animation: particle-2 0.6s ease-out forwards;
+        }
+
+        .animate-particle-3 {
+          animation: particle-3 0.6s ease-out forwards;
+        }
+
+        .animate-particle-4 {
+          animation: particle-4 0.6s ease-out forwards;
+        }
+
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out;
+        }
+      `}</style>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
       <div className="max-w-2xl mx-auto py-8">
         <div className="mb-6 space-y-4">
           <div className="flex justify-between items-center">
@@ -505,31 +630,52 @@ export default function GamePlay() {
                   key={option.id}
                   onClick={() => handleAnswer(option.id)}
                   disabled={answered || isValidating}
-                  className={`w-full p-4 text-left rounded-lg font-medium transition-all border-2 ${
+                  className={`w-full p-4 text-left rounded-lg font-medium transition-all duration-500 border-2 relative overflow-hidden ${
                     isValidating && isSelected
-                      ? "bg-slate-700/60 border-slate-500 text-slate-300 cursor-wait"
+                      ? "bg-slate-700/60 border-slate-500 text-slate-300 cursor-wait animate-pulse"
                       : !answered
-                      ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 text-white cursor-pointer"
+                      ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 hover:scale-[1.02] text-white cursor-pointer transform"
                       : showAsCorrect
-                      ? "bg-green-900/50 border-green-600 text-green-100"
+                      ? "bg-green-900/50 border-green-600 text-green-100 scale-[1.02] shadow-lg shadow-green-500/20"
                       : showAsWrong
-                      ? "bg-red-900/50 border-red-600 text-red-100"
-                      : "bg-slate-700/30 border-slate-600 text-slate-400 cursor-not-allowed"
+                      ? "bg-red-900/50 border-red-600 text-red-100 animate-shake"
+                      : "bg-slate-700/30 border-slate-600 text-slate-400 cursor-not-allowed opacity-60"
                   }`}
+                  style={{
+                    animation: showAsCorrect && revealingAnswer ? 'correctPulse 0.6s ease-out' : 
+                               showAsWrong && revealingAnswer ? 'wrongShake 0.5s ease-out' : undefined
+                  }}
                 >
-                  <div className="flex items-start gap-3">
+                  {/* Shimmer effect for loading */}
+                  {isValidating && isSelected && (
+                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                  )}
+                  
+                  {/* Success particle effect */}
+                  {showAsCorrect && revealingAnswer && (
+                    <>
+                      <div className="absolute top-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-1"></div>
+                      <div className="absolute top-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-2"></div>
+                      <div className="absolute bottom-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-3"></div>
+                      <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-4"></div>
+                    </>
+                  )}
+
+                  <div className="flex items-start gap-3 relative z-10">
                     <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all duration-300 ${
                         showAsCorrect
-                          ? "bg-green-600 text-white"
+                          ? "bg-green-600 text-white scale-110"
                           : showAsWrong
-                          ? "bg-red-600 text-white"
+                          ? "bg-red-600 text-white scale-110"
+                          : isValidating && isSelected
+                          ? "bg-slate-500 text-slate-300 animate-spin"
                           : "bg-slate-600 text-slate-300"
                       }`}
                     >
-                      {String.fromCharCode(65 + idx)}
+                      {showAsCorrect ? "✓" : showAsWrong ? "✗" : String.fromCharCode(65 + idx)}
                     </div>
-                    <span>{option.option_text}</span>
+                    <span className="transition-all duration-300">{option.option_text}</span>
                   </div>
                 </button>
               )
@@ -547,5 +693,6 @@ export default function GamePlay() {
         )}
       </div>
     </div>
+    </>
   )
 }
