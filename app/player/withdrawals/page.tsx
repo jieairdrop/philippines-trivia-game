@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import Link from "next/link"
 import {
@@ -13,75 +15,105 @@ import {
 import { User, Wallet, TrendingUp, ArrowDownCircle, DollarSign } from "lucide-react"
 import WithdrawalForm from "@/components/withdrawal-form"
 import WithdrawalHistory from "@/components/withdrawal-history"
+import { createClient } from "@/lib/supabase/client"
 
-export const dynamic = 'force-dynamic';  // New: Prevents caching for fresh data
-
-async function getWithdrawalData(userId: string) {
-  try {
-    const supabase = await createClient()
-    
-    // Fetch user withdrawal stats
-    const { data: stats, error: statsError } = await supabase
-      .from('user_withdrawal_stats')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
-    
-    if (statsError) {
-      console.error('Error fetching stats:', statsError)
-    }
-
-    // Fetch withdrawal history
-    const { data: withdrawals, error: withdrawalsError } = await supabase
-      .from('withdrawals')
-      .select('*')
-      .eq('user_id', userId)
-      .order('requested_at', { ascending: false })
-    
-    if (withdrawalsError) {
-      console.error('Error fetching withdrawals:', withdrawalsError)
-    }
-
-    return {
-      stats: stats || {
-        total_points_earned: 0,
-        total_points_used: 0,
-        available_points: 0,
-        total_amount_withdrawn: 0,
-        total_withdrawals_completed: 0
-      },
-      withdrawals: withdrawals || []
-    }
-  } catch (error) {
-    console.error('Error fetching withdrawal data:', error)
-    return {
-      stats: {
-        total_points_earned: 0,
-        total_points_used: 0,
-        available_points: 0,
-        total_amount_withdrawn: 0,
-        total_withdrawals_completed: 0
-      },
-      withdrawals: []
-    }
-  }
+interface WithdrawalStats {
+  total_points_earned: number
+  total_points_used: number
+  available_points: number
+  total_amount_withdrawn: number
+  total_withdrawals_completed: number
 }
 
-export default async function WithdrawalPage() {
-  const supabase = await createClient()
-  const { data: authData, error: authError } = await supabase.auth.getUser()
-  
-  if (authError || !authData.user) {
-    redirect("/player/login")
+interface Withdrawal {
+  id: string
+  user_id: string
+  points_used: number
+  amount_php: number
+  status: string
+  requested_at: string
+  processed_at?: string
+}
+
+export default function WithdrawalPage() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [playerProfile, setPlayerProfile] = useState<{ first_name: string; last_name: string } | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [stats, setStats] = useState<WithdrawalStats>({
+    total_points_earned: 0,
+    total_points_used: 0,
+    available_points: 0,
+    total_amount_withdrawn: 0,
+    total_withdrawals_completed: 0
+  })
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const supabase = createClient()
+        const { data: authData, error: authError } = await supabase.auth.getUser()
+        
+        if (authError || !authData.user) {
+          router.push("/player/login")
+          return
+        }
+
+        setUserId(authData.user.id)
+
+        // Fetch player profile
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("first_name, last_name")
+          .eq("id", authData.user.id)
+          .single()
+
+        if (profileError) {
+          console.error("Error fetching profile:", profileError)
+        } else {
+          setPlayerProfile(profileData)
+        }
+
+        // Fetch withdrawal stats
+        const { data: statsData, error: statsError } = await supabase
+          .from('user_withdrawal_stats')
+          .select('*')
+          .eq('user_id', authData.user.id)
+          .single()
+        
+        if (statsError) {
+          console.error('Error fetching stats:', statsError)
+        } else if (statsData) {
+          setStats(statsData)
+        }
+
+        // Fetch withdrawal history
+        const { data: withdrawalsData, error: withdrawalsError } = await supabase
+          .from('withdrawals')
+          .select('*')
+          .eq('user_id', authData.user.id)
+          .order('requested_at', { ascending: false })
+        
+        if (withdrawalsError) {
+          console.error('Error fetching withdrawals:', withdrawalsError)
+        } else if (withdrawalsData) {
+          setWithdrawals(withdrawalsData)
+        }
+
+      } catch (error) {
+        console.error('Error fetching data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [router])
+
+  if (loading) {
+    return <Loading />
   }
-
-  const { data: playerProfile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name")
-    .eq("id", authData.user.id)
-    .single()
-
-  const { stats, withdrawals } = await getWithdrawalData(authData.user.id)
 
   // Conversion rate: 100 points = ₱1.00
   const POINTS_TO_PHP_RATE = 100
@@ -197,10 +229,12 @@ export default async function WithdrawalPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <WithdrawalForm 
-                availablePoints={stats.available_points}
-                userId={authData.user.id}
-              />
+              {userId && (
+                <WithdrawalForm 
+                  availablePoints={stats.available_points}
+                  userId={userId}
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -252,5 +286,24 @@ function StatCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// Loading Component (same as Referrals)
+function Loading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 relative overflow-hidden">
+      {/* Glow Orbs */}
+      <div className="absolute top-20 right-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-20 left-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
+
+      {/* Spinner */}
+      <div className="relative flex flex-col items-center space-y-4 z-10">
+        <div className="h-14 w-14 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+        <p className="text-slate-300 text-sm animate-pulse tracking-wide">
+          Loading your withdrawals...
+        </p>
+      </div>
+    </div>
   )
 }
