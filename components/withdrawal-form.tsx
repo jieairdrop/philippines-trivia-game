@@ -233,11 +233,11 @@ export default function WithdrawalForm({ availablePoints, userId }: WithdrawalFo
           <p className="text-sm text-blue-300">
             <strong>Conversion Rate:</strong>{' '}
             {paymentMethod === 'crypto'
-              ? `100 points = ₱1.00 (equivalent to ~${(1 / (bnbPrice || 1)).toFixed(6)} BNB; 1 BNB ≈ ₱${bnbPrice ? bnbPrice.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 'Loading...'})`
+              ? `100 points = ${(1 / (bnbPrice || 1)).toFixed(6)} BNB : 'Loading...'})`
               : '100 points = ₱1.00'}
           </p>
           <p className="text-sm text-blue-300">
-            <strong>Processing Time:</strong> 1-3 business days
+            <strong>Processing Time:</strong> 12 - 48 hours
           </p>
           <p className="text-sm text-blue-300">
             <strong>Available:</strong> {availablePoints.toLocaleString()} points
