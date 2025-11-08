@@ -21,13 +21,13 @@ export const metadata: Metadata = {
         media: "(prefers-color-scheme: dark)",
       },
       {
-        url: "/icon.svg",
-        type: "image/svg+xml",
+        url: "/icon.png",
+        type: "image/png",
       },
     ],
     apple: "/apple-icon.png",
   },
-    generator: 'v0.app'
+    generator: 'weVibes Studio'
 }
 
 export default function RootLayout({
