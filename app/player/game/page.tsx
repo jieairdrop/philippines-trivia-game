@@ -48,7 +48,6 @@ export default function GamePlay() {
   const [score, setScore] = useState(0)
   const [answered, setAnswered] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
-  const [correctAnswer, setCorrectAnswer] = useState<string | null>(null)
   const [gameFinished, setGameFinished] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
@@ -136,8 +135,8 @@ export default function GamePlay() {
           // Reset answer states - user will answer fresh
           setAnswered(false)
           setSelectedAnswer(null)
-          setCorrectAnswer(null)
           setIsCorrect(null)
+          setRevealingAnswer(false)
           
           // Load category if exists
           if (gameState.categoryId) {
@@ -279,22 +278,23 @@ export default function GamePlay() {
       await new Promise(resolve => setTimeout(resolve, 300))
 
       setRevealingAnswer(true)
-      setAnswered(true)
       setIsCorrect(correctOption)
-      setCorrectAnswer(result.correctOptionId)
-
-      // Wait a bit before updating score for visual effect
-      await new Promise(resolve => setTimeout(resolve, 400))
 
       if (correctOption) {
+        // Only mark as answered for correct answers
+        setAnswered(true)
+        
+        // Wait a bit before updating score for visual effect
+        await new Promise(resolve => setTimeout(resolve, 400))
         setScore(score + points)
       } else {
-        // Save complete game state before showing ad (but NOT the answer states)
+        // For wrong answers, DON'T mark as answered - allow retry
+        // Save complete game state before showing ad
         if (typeof window !== 'undefined' && sessionId) {
           const gameState: GameState = {
             score,
             currentIndex,
-            questions, // Save the entire questions array with current order
+            questions,
             sessionId,
             categoryId
           }
@@ -330,7 +330,6 @@ export default function GamePlay() {
       setCurrentIndex(currentIndex + 1)
       setAnswered(false)
       setSelectedAnswer(null)
-      setCorrectAnswer(null)
       setIsCorrect(null)
       setShowAd(false)
       setShowRetryButton(false)
@@ -563,136 +562,135 @@ export default function GamePlay() {
         }
       `}</style>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4">
-      <div className="max-w-2xl mx-auto py-8">
-        <div className="mb-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              {currentCategory && (
-                <>
-                  <span className="text-2xl">{currentCategory.icon_emoji}</span>
-                  <span className="text-slate-300 font-semibold">{currentCategory.name}</span>
-                </>
-              )}
+        <div className="max-w-2xl mx-auto py-8">
+          <div className="mb-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                {currentCategory && (
+                  <>
+                    <span className="text-2xl">{currentCategory.icon_emoji}</span>
+                    <span className="text-slate-300 font-semibold">{currentCategory.name}</span>
+                  </>
+                )}
+              </div>
+              <span className="text-accent font-bold">Score: {score}</span>
             </div>
-            <span className="text-accent font-bold">Score: {score}</span>
-          </div>
 
-          {/* Progress Bar */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-400">
-                Question {currentIndex + 1}/{questions.length}
-              </span>
-              <span className="text-slate-400">{Math.round(((currentIndex + 1) / questions.length) * 100)}%</span>
-            </div>
-            <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300"
-                style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Question Card */}
-        <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm mb-6">
-          <CardHeader>
-            <h2 className="text-xl font-bold text-white mb-2">{question.question_text}</h2>
-            <p className="text-slate-400 text-sm flex items-center gap-3 flex-wrap">
-              <span>
-                Difficulty:{" "}
-                <span
-                  className={`font-semibold ${
-                    question.difficulty === "Hard"
-                      ? "text-red-400"
-                      : question.difficulty === "Medium"
-                        ? "text-amber-400"
-                        : "text-green-400"
-                  }`}
-                >
-                  {question.difficulty}
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-400">
+                  Question {currentIndex + 1}/{questions.length}
                 </span>
-              </span>
-              <span>
-                Points: <span className="font-semibold text-accent">{question.points}</span>
-              </span>
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {question.options.map((option, idx) => {
-              const isSelected = selectedAnswer === option.id
-              const isCorrectOption = correctAnswer === option.id
-              const showAsCorrect = answered && isCorrectOption
-              const showAsWrong = answered && isSelected && !isCorrectOption
+                <span className="text-slate-400">{Math.round(((currentIndex + 1) / questions.length) * 100)}%</span>
+              </div>
+              <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-300"
+                  style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
 
-              return (
-                <button
-                  key={option.id}
-                  onClick={() => handleAnswer(option.id)}
-                  disabled={answered || isValidating}
-                  className={`w-full p-4 text-left rounded-lg font-medium transition-all duration-500 border-2 relative overflow-hidden ${
-                    isValidating && isSelected
-                      ? "bg-slate-700/60 border-slate-500 text-slate-300 cursor-wait animate-pulse"
-                      : !answered
-                      ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 hover:scale-[1.02] text-white cursor-pointer transform"
-                      : showAsCorrect
-                      ? "bg-green-900/50 border-green-600 text-green-100 scale-[1.02] shadow-lg shadow-green-500/20"
-                      : showAsWrong
-                      ? "bg-red-900/50 border-red-600 text-red-100 animate-shake"
-                      : "bg-slate-700/30 border-slate-600 text-slate-400 cursor-not-allowed opacity-60"
-                  }`}
-                  style={{
-                    animation: showAsCorrect && revealingAnswer ? 'correctPulse 0.6s ease-out' : 
-                               showAsWrong && revealingAnswer ? 'wrongShake 0.5s ease-out' : undefined
-                  }}
-                >
-                  {/* Shimmer effect for loading */}
-                  {isValidating && isSelected && (
-                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-                  )}
-                  
-                  {/* Success particle effect */}
-                  {showAsCorrect && revealingAnswer && (
-                    <>
-                      <div className="absolute top-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-1"></div>
-                      <div className="absolute top-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-2"></div>
-                      <div className="absolute bottom-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-3"></div>
-                      <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-4"></div>
-                    </>
-                  )}
+          {/* Question Card */}
+          <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm mb-6">
+            <CardHeader>
+              <h2 className="text-xl font-bold text-white mb-2">{question.question_text}</h2>
+              <p className="text-slate-400 text-sm flex items-center gap-3 flex-wrap">
+                <span>
+                  Difficulty:{" "}
+                  <span
+                    className={`font-semibold ${
+                      question.difficulty === "Hard"
+                        ? "text-red-400"
+                        : question.difficulty === "Medium"
+                          ? "text-amber-400"
+                          : "text-green-400"
+                    }`}
+                  >
+                    {question.difficulty}
+                  </span>
+                </span>
+                <span>
+                  Points: <span className="font-semibold text-accent">{question.points}</span>
+                </span>
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {question.options.map((option, idx) => {
+                const isSelected = selectedAnswer === option.id
+                const showAsCorrect = answered && isCorrect && isSelected
+                const showAsWrong = isSelected && isCorrect === false && !answered
 
-                  <div className="flex items-start gap-3 relative z-10">
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all duration-300 ${
-                        showAsCorrect
-                          ? "bg-green-600 text-white scale-110"
-                          : showAsWrong
-                          ? "bg-red-600 text-white scale-110"
-                          : isValidating && isSelected
-                          ? "bg-slate-500 text-slate-300 animate-spin"
-                          : "bg-slate-600 text-slate-300"
-                      }`}
-                    >
-                      {showAsCorrect ? "✓" : showAsWrong ? "✗" : String.fromCharCode(65 + idx)}
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => handleAnswer(option.id)}
+                    disabled={answered || isValidating}
+                    className={`w-full p-4 text-left rounded-lg font-medium transition-all duration-500 border-2 relative overflow-hidden ${
+                      isValidating && isSelected
+                        ? "bg-slate-700/60 border-slate-500 text-slate-300 cursor-wait animate-pulse"
+                        : !answered && !isValidating
+                        ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 hover:scale-[1.02] text-white cursor-pointer transform"
+                        : showAsCorrect
+                        ? "bg-green-900/50 border-green-600 text-green-100 scale-[1.02] shadow-lg shadow-green-500/20"
+                        : showAsWrong
+                        ? "bg-red-900/50 border-red-600 text-red-100"
+                        : "bg-slate-700/40 border-slate-600 text-white cursor-pointer hover:border-primary/50 hover:bg-slate-700/60"
+                    }`}
+                    style={{
+                      animation: showAsCorrect && revealingAnswer ? 'correctPulse 0.6s ease-out' : 
+                                 showAsWrong && revealingAnswer ? 'wrongShake 0.5s ease-out' : undefined
+                    }}
+                  >
+                    {/* Shimmer effect for loading */}
+                    {isValidating && isSelected && (
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+                    )}
+                    
+                    {/* Success particle effect */}
+                    {showAsCorrect && revealingAnswer && (
+                      <>
+                        <div className="absolute top-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-1"></div>
+                        <div className="absolute top-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-2"></div>
+                        <div className="absolute bottom-0 left-0 w-2 h-2 bg-green-400 rounded-full animate-particle-3"></div>
+                        <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full animate-particle-4"></div>
+                      </>
+                    )}
+
+                    <div className="flex items-start gap-3 relative z-10">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-all duration-300 ${
+                          showAsCorrect
+                            ? "bg-green-600 text-white scale-110"
+                            : showAsWrong
+                            ? "bg-red-600 text-white scale-110"
+                            : isValidating && isSelected
+                            ? "bg-slate-500 text-slate-300 animate-spin"
+                            : "bg-slate-600 text-slate-300"
+                        }`}
+                      >
+                        {showAsCorrect ? "✓" : showAsWrong ? "✗" : String.fromCharCode(65 + idx)}
+                      </div>
+                      <span className="transition-all duration-300">{option.option_text}</span>
                     </div>
-                    <span className="transition-all duration-300">{option.option_text}</span>
-                  </div>
-                </button>
-              )
-            })}
-          </CardContent>
-        </Card>
+                  </button>
+                )
+              })}
+            </CardContent>
+          </Card>
 
-        {answered && isCorrect && (
-          <Button
-            onClick={handleNext}
-            className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 to-primary/70 text-white font-semibold h-12 rounded-lg transition-all"
-          >
-            {currentIndex + 1 < questions.length ? "Next Question" : "Finish Quiz"}
-          </Button>
-        )}
+          {answered && isCorrect && (
+            <Button
+              onClick={handleNext}
+              className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 to-primary/70 text-white font-semibold h-12 rounded-lg transition-all"
+            >
+              {currentIndex + 1 < questions.length ? "Next Question" : "Finish Quiz"}
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
     </>
   )
 }
