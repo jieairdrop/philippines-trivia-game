@@ -12,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { User, Star, CheckCircle2, Target, Trophy, Users } from "lucide-react"
+import { User, Star, CheckCircle2, Target, Trophy, Users, Wallet, UserPlus } from "lucide-react"
 
 async function getPlayerData(userId: string) {
   try {
@@ -193,8 +193,8 @@ export default async function PlayerDashboard() {
           </Card>
         )}
 
-        {/* Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        {/* Action Buttons Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Link href="/player/categories">
             <Button className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
               Choose Category & Play
@@ -203,6 +203,18 @@ export default async function PlayerDashboard() {
           <Link href="/player/game">
             <Button className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-slate-900 font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
               Quick Play (Random)
+            </Button>
+          </Link>
+          <Link href="/player/referrals">
+            <Button className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2">
+              <UserPlus className="w-5 h-5" />
+              Referrals
+            </Button>
+          </Link>
+          <Link href="/player/withdrawals">
+            <Button className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2">
+              <Wallet className="w-5 h-5" />
+              Withdrawals
             </Button>
           </Link>
         </div>
