@@ -244,10 +244,21 @@ export default function GamePlay() {
     const question = questions[currentIndex]
 
     try {
+      // Get auth token
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+
       // Validate answer on server
       const response = await fetch('/api/validate-answer', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           questionId: question.id,
           optionId: optionId,
