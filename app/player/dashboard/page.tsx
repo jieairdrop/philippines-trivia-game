@@ -201,7 +201,7 @@ export default async function PlayerDashboard() {
             </Button>
           </Link>
           <Link href="/player/game">
-            <Button className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-slate-900 font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+            <Button className="w-full bg-gradient-to-r from-accent to-accent/80 hover:from-accent/90 hover:to-accent/70 text-white font-semibold h-12 rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
               Quick Play (Random)
             </Button>
           </Link>
