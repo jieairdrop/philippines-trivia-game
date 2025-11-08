@@ -17,7 +17,6 @@ interface Question {
   options: Array<{
     id: string
     option_text: string
-    is_correct: boolean
   }>
 }
 
@@ -49,6 +48,7 @@ export default function GamePlay() {
   const [score, setScore] = useState(0)
   const [answered, setAnswered] = useState(false)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
+  const [correctAnswer, setCorrectAnswer] = useState<string | null>(null)
   const [gameFinished, setGameFinished] = useState(false)
   const [loading, setLoading] = useState(true)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
@@ -57,6 +57,7 @@ export default function GamePlay() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [showRetryButton, setShowRetryButton] = useState(false)
   const [countdown, setCountdown] = useState(5)
+  const [isValidating, setIsValidating] = useState(false)
 
   // Countdown timer effect
   useEffect(() => {
@@ -134,6 +135,7 @@ export default function GamePlay() {
           // Reset answer states - user will answer fresh
           setAnswered(false)
           setSelectedAnswer(null)
+          setCorrectAnswer(null)
           setIsCorrect(null)
           
           // Load category if exists
@@ -176,9 +178,10 @@ export default function GamePlay() {
 
         const questionsWithOptions = await Promise.all(
           limitedQuestions.map(async (q) => {
+            // SECURITY: Don't fetch is_correct field
             const { data: options, error: oError } = await supabase
               .from("question_options")
-              .select("*")
+              .select("id, option_text, display_order")
               .eq("question_id", q.id)
               .order("display_order")
 
@@ -232,48 +235,62 @@ export default function GamePlay() {
     }
   }, [router, categoryId])
 
-  const handleAnswer = async (optionId: string, correctOption: boolean) => {
-    if (answered) return
+  const handleAnswer = async (optionId: string) => {
+    if (answered || isValidating) return
 
     setSelectedAnswer(optionId)
-    setAnswered(true)
-    setIsCorrect(correctOption)
+    setIsValidating(true)
 
     const question = questions[currentIndex]
-    const points = correctOption ? question.points : 0
 
-    if (correctOption) {
-      setScore(score + points)
-    } else {
-      // Save complete game state before showing ad (but NOT the answer states)
-      if (typeof window !== 'undefined' && sessionId) {
-        const gameState: GameState = {
-          score,
-          currentIndex,
-          questions, // Save the entire questions array with current order
-          sessionId,
-          categoryId
-        }
-        sessionStorage.setItem('gameState', JSON.stringify(gameState))
-      }
-      setShowAd(true)
-      setShowRetryButton(false)
-      setCountdown(5)
-    }
-
-    if (user) {
-      try {
-        const supabase = createClient()
-        await supabase.from("game_attempts").insert({
-          user_id: user.id,
-          question_id: question.id,
-          selected_option_id: optionId,
-          is_correct: correctOption,
-          points_earned: points,
+    try {
+      // Validate answer on server
+      const response = await fetch('/api/validate-answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionId: question.id,
+          optionId: optionId,
+          sessionId: sessionId
         })
-      } catch (error) {
-        console.error("Error saving attempt:", error)
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to validate answer')
       }
+
+      const result = await response.json()
+      const correctOption = result.isCorrect
+      const points = result.points
+
+      setAnswered(true)
+      setIsCorrect(correctOption)
+      setCorrectAnswer(result.correctOptionId)
+
+      if (correctOption) {
+        setScore(score + points)
+      } else {
+        // Save complete game state before showing ad (but NOT the answer states)
+        if (typeof window !== 'undefined' && sessionId) {
+          const gameState: GameState = {
+            score,
+            currentIndex,
+            questions, // Save the entire questions array with current order
+            sessionId,
+            categoryId
+          }
+          sessionStorage.setItem('gameState', JSON.stringify(gameState))
+        }
+        setShowAd(true)
+        setShowRetryButton(false)
+        setCountdown(5)
+      }
+    } catch (error) {
+      console.error("Error validating answer:", error)
+      alert("Failed to submit answer. Please try again.")
+      setSelectedAnswer(null)
+    } finally {
+      setIsValidating(false)
     }
   }
 
@@ -290,6 +307,7 @@ export default function GamePlay() {
       setCurrentIndex(currentIndex + 1)
       setAnswered(false)
       setSelectedAnswer(null)
+      setCorrectAnswer(null)
       setIsCorrect(null)
       setShowAd(false)
       setShowRetryButton(false)
@@ -465,41 +483,46 @@ export default function GamePlay() {
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {question.options.map((option, idx) => (
-              <button
-                key={option.id}
-                onClick={() => handleAnswer(option.id, option.is_correct)}
-                disabled={answered}
-                className={`w-full p-4 text-left rounded-lg font-medium transition-all border-2 cursor-pointer ${
-                  selectedAnswer === null && !answered
-                    ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 text-white"
-                    : selectedAnswer === option.id
-                      ? option.is_correct
-                        ? "bg-green-900/50 border-green-600 text-green-100"
-                        : "bg-red-900/50 border-red-600 text-red-100"
-                      : option.is_correct && answered
-                        ? "bg-green-900/50 border-green-600 text-green-100"
-                        : "bg-slate-700/30 border-slate-600 text-slate-400"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                      selectedAnswer === option.id
-                        ? option.is_correct
+            {question.options.map((option, idx) => {
+              const isSelected = selectedAnswer === option.id
+              const isCorrectOption = correctAnswer === option.id
+              const showAsCorrect = answered && isCorrectOption
+              const showAsWrong = answered && isSelected && !isCorrectOption
+
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => handleAnswer(option.id)}
+                  disabled={answered || isValidating}
+                  className={`w-full p-4 text-left rounded-lg font-medium transition-all border-2 ${
+                    isValidating && isSelected
+                      ? "bg-slate-700/60 border-slate-500 text-slate-300 cursor-wait"
+                      : !answered
+                      ? "bg-slate-700/40 border-slate-600 hover:border-primary/50 hover:bg-slate-700/60 text-white cursor-pointer"
+                      : showAsCorrect
+                      ? "bg-green-900/50 border-green-600 text-green-100"
+                      : showAsWrong
+                      ? "bg-red-900/50 border-red-600 text-red-100"
+                      : "bg-slate-700/30 border-slate-600 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                        showAsCorrect
                           ? "bg-green-600 text-white"
-                          : "bg-red-600 text-white"
-                        : option.is_correct && answered
-                          ? "bg-green-600 text-white"
+                          : showAsWrong
+                          ? "bg-red-600 text-white"
                           : "bg-slate-600 text-slate-300"
-                    }`}
-                  >
-                    {String.fromCharCode(65 + idx)}
+                      }`}
+                    >
+                      {String.fromCharCode(65 + idx)}
+                    </div>
+                    <span>{option.option_text}</span>
                   </div>
-                  <span>{option.option_text}</span>
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </CardContent>
         </Card>
 
