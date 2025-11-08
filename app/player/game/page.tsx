@@ -36,6 +36,8 @@ interface GameState {
   categoryId: string | null
 }
 
+const QUESTIONS_PER_GAME = 15 // Number of questions per game
+
 export default function GamePlay() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -157,6 +159,7 @@ export default function GamePlay() {
         const session = await startGameSession(categoryId || undefined)
         setSessionId(session.id)
 
+        // Fetch ALL questions first to shuffle them properly
         let query = supabase.from("questions").select("*")
 
         if (categoryId) {
@@ -167,8 +170,12 @@ export default function GamePlay() {
 
         if (qError) throw qError
 
+        // Shuffle ALL questions first, then take only the limit
+        const shuffledQuestions = questionsData.sort(() => Math.random() - 0.5)
+        const limitedQuestions = shuffledQuestions.slice(0, QUESTIONS_PER_GAME)
+
         const questionsWithOptions = await Promise.all(
-          questionsData.map(async (q) => {
+          limitedQuestions.map(async (q) => {
             const { data: options, error: oError } = await supabase
               .from("question_options")
               .select("*")
@@ -195,9 +202,7 @@ export default function GamePlay() {
           }
         }
 
-        // Shuffle questions
-        const shuffled = questionsWithOptions.sort(() => Math.random() - 0.5)
-        setQuestions(shuffled)
+        setQuestions(questionsWithOptions)
       } catch (error) {
         console.error("Error loading game:", error)
         router.push("/player/dashboard")
