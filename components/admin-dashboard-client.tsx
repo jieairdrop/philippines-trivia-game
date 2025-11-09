@@ -41,6 +41,12 @@ interface AdminDashboardClientProps {
   adminName?: string
 }
 
+interface PieLabelProps {
+  name: string
+  value: number
+  percent: number
+}
+
 export default function AdminDashboardClient({ 
   stats, 
   activity, 
@@ -49,6 +55,7 @@ export default function AdminDashboardClient({
 }: AdminDashboardClientProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [sortBy, setSortBy] = useState<"recent" | "accuracy" | "attempts">("recent")
+  const [hoveredQuestion, setHoveredQuestion] = useState<number | null>(null)
 
   // Calculate accuracy data for pie chart
   const accuracyData = stats
@@ -96,6 +103,7 @@ export default function AdminDashboardClient({
     .slice(0, 5)
     .map((q) => ({
       name: q.question.substring(0, 15) + "...",
+      fullName: q.question,
       accuracy: Number.parseInt(q.accuracy),
       attempts: q.totalAttempts,
     })) || []
@@ -108,6 +116,12 @@ export default function AdminDashboardClient({
     ? Math.round(stats.totalAttempts / Math.max(stats.totalPlayers, 1))
     : 0
 
+  const renderPieLabel = (props: any) => {
+    const { name, value, percent = 0 } = props.payload;
+    return `${name}: ${value}
+(${(percent * 100).toFixed(0)}%)`;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Background Effects */}
@@ -117,7 +131,7 @@ export default function AdminDashboardClient({
       </div>
 
       {/* Header */}
-      <header className="bg-gradient-to-r from-slate-800/80 to-blue-900/80 border-b border-slate-700 backdrop-blur-sm py-6 relative z-10 sticky top-0">
+      <header className="bg-gradient-to-r from-slate-800/80 to-blue-900/80 border-b border-slate-700 backdrop-blur-sm py-6 relative z-20 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -188,24 +202,39 @@ export default function AdminDashboardClient({
                     data={accuracyData}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ name, value, percent }) => 
-                      `${name}: ${value} (${((percent as number) * 100).toFixed(0)}%)`
-                    }
-                    outerRadius={80}
+                    labelLine={true}
+                    label={renderPieLabel}
+                    outerRadius={100}
+                    innerRadius={40}
                     fill="#8884d8"
                     dataKey="value"
+                    paddingAngle={2}
                   >
                     {accuracyData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(value) => value.toLocaleString()}
-                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #475569" }}
+                    formatter={(value) => (value as number).toLocaleString()}
+                    contentStyle={{ 
+                      backgroundColor: "#1e293b", 
+                      border: "1px solid #475569",
+                      borderRadius: "8px",
+                      color: "#f1f5f9"
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>
+              <div className="mt-4 flex justify-center gap-6">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  <span className="text-sm text-slate-300">Correct: {accuracyData[0]?.value || 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <span className="text-sm text-slate-300">Incorrect: {accuracyData[1]?.value || 0}</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -213,19 +242,45 @@ export default function AdminDashboardClient({
           <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm lg:col-span-2">
             <CardHeader>
               <CardTitle className="text-white">Top Questions by Accuracy</CardTitle>
-              <CardDescription className="text-slate-400">Performance metrics</CardDescription>
+              <CardDescription className="text-slate-400">Hover to see full question text</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={performanceTrend}>
+                <BarChart 
+                  data={performanceTrend}
+                  margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                  <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="#94a3b8" 
+                    tick={{ fontSize: 12 }}
+                    angle={-15}
+                    textAnchor="end"
+                    height={60}
+                  />
                   <YAxis stroke="#94a3b8" />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #475569", borderRadius: "8px" }}
+                    contentStyle={{ 
+                      backgroundColor: "#1e293b", 
+                      border: "1px solid #475569", 
+                      borderRadius: "8px",
+                      color: "#f1f5f9",
+                      maxWidth: "300px"
+                    }}
                     formatter={(value) => `${value}%`}
+                    labelFormatter={(label) => {
+                      const fullName = performanceTrend.find(q => q.name === label)?.fullName
+                      return `${fullName}`
+                    }}
                   />
-                  <Bar dataKey="accuracy" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+                  <Bar 
+                    dataKey="accuracy" 
+                    fill="#f59e0b" 
+                    radius={[8, 8, 0, 0]}
+                    onMouseEnter={(data) => setHoveredQuestion((data.payload as { accuracy: number }).accuracy)}
+                    onMouseLeave={() => setHoveredQuestion(null)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -260,6 +315,7 @@ export default function AdminDashboardClient({
                       <tr 
                         key={q.questionId} 
                         className="border-b border-slate-700 hover:bg-slate-700/40 transition"
+                        title={q.question}
                       >
                         <td className="py-3 px-4 text-white max-w-xs truncate">{q.question}</td>
                         <td className="text-center py-3 px-4 text-slate-300">{q.totalAttempts}</td>
@@ -316,7 +372,7 @@ export default function AdminDashboardClient({
             </div>
 
             {/* Activity List */}
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
               {filteredActivity.length > 0 ? (
                 filteredActivity.map((act) => (
                   <ActivityItem key={act.id} activity={act} />
@@ -381,7 +437,10 @@ function ActivityItem({ activity }: ActivityItemProps) {
   const isCorrect = activity.is_correct
 
   return (
-    <div className="flex justify-between items-center bg-gradient-to-r from-slate-700/30 to-transparent p-3 rounded-lg border border-slate-700/50 hover:border-primary/50 hover:bg-slate-700/50 transition-all duration-300 cursor-default group text-sm">
+    <div 
+      className="flex justify-between items-center bg-gradient-to-r from-slate-700/30 to-transparent p-3 rounded-lg border border-slate-700/50 hover:border-primary/50 hover:bg-slate-700/50 transition-all duration-300 cursor-default group text-sm"
+      title={activity.questions?.question_text}
+    >
       <div className="flex-1 min-w-0">
         <p className="text-white font-medium group-hover:text-accent transition-colors truncate">
           {activity.user_id}
