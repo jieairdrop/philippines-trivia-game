@@ -1,11 +1,11 @@
-// app/admin/withdrawals/page.tsx (updated to use regular client for own profile fetch, avoiding service role for auth check)
+// app/admin/withdrawals/page.tsx
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { DataTable } from "@/components/ui/data-table"
 import { columns } from "@/components/admin/withdrawal-columns"
 import { getWithdrawals } from "@/lib/actions/admin/withdrawals"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import AdminWithdrawalsClient from "@/components/admin/admin-withdrawals-client"
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +58,6 @@ export default async function AdminWithdrawalsPage() {
     }
   } catch (error) {
     console.error('Critical error in admin auth/profile fetch:', error)
-    // Log and redirect with details in console
     redirect("/admin")
   }
 
@@ -81,61 +80,12 @@ export default async function AdminWithdrawalsPage() {
   const adminName = profile ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || user?.email || 'Admin' : 'Admin'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-      {/* Background Effects */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 right-10 w-72 h-72 bg-primary/20 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl"></div>
-      </div>
-
-      {/* Header */}
-      <header className="bg-gradient-to-r from-slate-800/80 to-blue-900/80 border-b border-slate-700 backdrop-blur-sm py-6 relative z-10">
-        <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Withdrawal Management
-            </h1>
-            <p className="text-slate-400 text-sm mt-1">{adminName}</p>
-          </div>
-          <form action="/auth/logout" method="POST">
-            <Button
-              type="submit"
-              variant="outline"
-              className="border-slate-600 text-white hover:bg-slate-700 bg-transparent cursor-pointer"
-            >
-              Logout
-            </Button>
-          </form>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 relative z-10">
-        <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-white">Withdrawal Requests</CardTitle>
-            <CardDescription className="text-slate-400">Review and process player withdrawal requests</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {withdrawals.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-400 text-lg mb-2">No withdrawals found.</p>
-                <p className="text-slate-500 text-sm mb-4">Check Vercel Function Logs for details on profile or data fetch issues.</p>
-                <details className="text-xs text-slate-600 mt-4">
-                  <summary>Debug Info</summary>
-                  <ul className="mt-2 text-slate-500">
-                    <li>User ID: {user?.id || 'N/A'}</li>
-                    <li>Profile Role: {profile?.role || 'N/A'}</li>
-                    <li>Withdrawals Count: {withdrawals.length}</li>
-                  </ul>
-                </details>
-              </div>
-            ) : (
-              <DataTable columns={columns} data={withdrawals} />
-            )}
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <AdminWithdrawalsClient
+      withdrawals={withdrawals}
+      userEmail={user?.email || ''}
+      adminName={adminName}
+      userId={user?.id}
+      profileRole={profile?.role}
+    />
   )
 }

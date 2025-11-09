@@ -1,58 +1,44 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { 
-  Users, 
-  HelpCircle, 
-  Target, 
-  Gift, 
-  FolderOpen, 
-  List,
-  ArrowLeft,
-  ChevronDown, 
-  LayoutDashboard, 
-  LogOut, 
-  Database, 
-  Settings, 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { DataTable } from "@/components/ui/data-table"
+import { columns } from "@/components/admin/withdrawal-columns"
+import { useState, useRef, useEffect } from "react"
+import Link from "next/link"
+import {
+  Award,
+  Settings,
+  LayoutDashboard,
+  Users2,
+  LogOut,
+  ChevronDown,
   Wallet2,
-  Award
+  Database,
+  HelpCircle,
+  FolderOpen,
+  List,
+  Gift,
+  Target,
 } from "lucide-react"
 
-interface Stats {
-  users: number
-  questions: number
-  attempts: number
-  categories: number
-  referrals: number
-  options: number
+interface AdminWithdrawalsClientProps {
+  withdrawals: any[]
+  userEmail: string
+  adminName?: string
+  userId?: string
+  profileRole?: string
 }
 
-export default function ManagementHubPage() {
-  const router = useRouter()
-  const supabase = createClient()
-  
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<Stats>({
-    users: 0,
-    questions: 0,
-    attempts: 0,
-    categories: 0,
-    referrals: 0,
-    options: 0
-  })
-
-  // Header states
+export default function AdminWithdrawalsClient({
+  withdrawals,
+  userEmail,
+  adminName,
+  userId,
+  profileRole,
+}: AdminWithdrawalsClientProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Header user data
-  const [userEmail, setUserEmail] = useState("")
-  const [adminName, setAdminName] = useState("")
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -78,155 +64,25 @@ export default function ManagementHubPage() {
     return email?.substring(0, 2).toUpperCase() || "AD"
   }
 
-  useEffect(() => {
-    checkAuthAndFetchData()
-  }, [])
-
-  const checkAuthAndFetchData = async () => {
-    const { data: userData, error: userError } = await supabase.auth.getUser()
-    if (userError || !userData.user) {
-      router.push("/admin/login")
-      return
-    }
-
-    setUserEmail(userData.user.email || "")
-
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userData.user.id)
-      .eq("role", "admin")
-      .single()
-
-    if (profileError || !profileData) {
-      router.push("/admin/login")
-      return
-    }
-
-    setAdminName(`${profileData.first_name || ""} ${profileData.last_name || ""}`.trim() || userData.user.email || "")
-
-    await fetchStats()
-    setLoading(false)
-  }
-
-  const fetchStats = async () => {
-    try {
-      const [
-        { count: usersCount },
-        { count: questionsCount },
-        { count: attemptsCount },
-        { count: categoriesCount },
-        { count: referralsCount },
-        { count: optionsCount }
-      ] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("questions").select("*", { count: "exact", head: true }),
-        supabase.from("game_attempts").select("*", { count: "exact", head: true }),
-        supabase.from("categories").select("*", { count: "exact", head: true }),
-        supabase.from("referrals").select("*", { count: "exact", head: true }),
-        supabase.from("question_options").select("*", { count: "exact", head: true })
-      ])
-
-      setStats({
-        users: usersCount || 0,
-        questions: questionsCount || 0,
-        attempts: attemptsCount || 0,
-        categories: categoriesCount || 0,
-        referrals: referralsCount || 0,
-        options: optionsCount || 0
-      })
-    } catch (error) {
-      console.error("Error fetching stats:", error)
-    }
-  }
-
-  const managementCards = [
-    {
-      title: "Users Management",
-      description: "Manage user accounts, roles, and profiles",
-      icon: Users,
-      count: stats.users,
-      color: "text-blue-400",
-      bgColor: "bg-blue-900/20",
-      route: "/admin/manage/users"
-    },
-    {
-      title: "Categories",
-      description: "Manage quiz categories and topics",
-      icon: FolderOpen,
-      count: stats.categories,
-      color: "text-purple-400",
-      bgColor: "bg-purple-900/20",
-      route: "/admin/manage/categories"
-    },
-    {
-      title: "Questions",
-      description: "Manage trivia questions and answers",
-      icon: HelpCircle,
-      count: stats.questions,
-      color: "text-green-400",
-      bgColor: "bg-green-900/20",
-      route: "/admin/manage/questions"
-    },
-    {
-      title: "Question Options",
-      description: "Manage answer options for questions",
-      icon: List,
-      count: stats.options,
-      color: "text-yellow-400",
-      bgColor: "bg-yellow-900/20",
-      route: "/admin/manage/options"
-    },
-    {
-      title: "Game Attempts",
-      description: "View all game attempts and statistics",
-      icon: Target,
-      count: stats.attempts,
-      color: "text-orange-400",
-      bgColor: "bg-orange-900/20",
-      route: "/admin/manage/attempts"
-    },
-    {
-      title: "Referrals",
-      description: "Manage referral system and bonuses",
-      icon: Gift,
-      count: stats.referrals,
-      color: "text-pink-400",
-      bgColor: "bg-pink-900/20",
-      route: "/admin/manage/referrals"
-    }
-  ]
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-slate-300">Loading database hub...</div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
       {/* Animated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 right-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 left-10 w-[32rem] h-[32rem] bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-cyan-500/5 rounded-full blur-xl animate-pulse delay-500"></div>
+        <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-cyan-500/5 rounded-full blur-3xl animate-pulse delay-500"></div>
       </div>
 
       {/* Header */}
       <header className="bg-gradient-to-r from-slate-900/95 to-blue-900/95 border-b border-slate-800/50 backdrop-blur-xl shadow-2xl py-6 sticky top-0 z-50">
         <div className="max-w-[90rem] mx-auto px-6 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Award className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Wallet2 className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                Database Management
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
+                Withdrawal Management
               </h1>
               <p className="text-slate-400 text-sm mt-0.5 flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
@@ -241,7 +97,7 @@ export default function ManagementHubPage() {
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               className="flex items-center gap-3 px-4 py-2 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-900/50 border border-slate-700/50 hover:border-slate-600/50 hover:bg-slate-800/70 transition-all duration-300 shadow-lg"
             >
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
                 <span className="text-white font-bold text-sm">{getInitials(adminName, userEmail)}</span>
               </div>
               <div className="hidden sm:block text-left">
@@ -287,15 +143,15 @@ export default function ManagementHubPage() {
                 </div>
 
                 {/* Management Section */}
-                <div className="py-2 px-2 space-y-1">
-                  <div className="px-2 py-1">
-                    <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                      Management
-                    </div>
+                <div className="px-2 py-1">
+                  <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Management
                   </div>
+                </div>
 
+                <div className="py-2 px-2 space-y-1">
                   <Link href="/admin/manage">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white bg-purple-950/50 transition-all duration-200 text-sm font-medium group">
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-purple-950/50 transition-all duration-200 text-sm font-medium group">
                       <Database className="w-4 h-4 text-purple-400 group-hover:text-purple-300 transition-colors" />
                       Database Hub
                     </button>
@@ -303,7 +159,7 @@ export default function ManagementHubPage() {
 
                   <Link href="/admin/manage/users">
                     <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-blue-950/50 transition-all duration-200 text-sm font-medium group">
-                      <Users className="w-4 h-4 text-blue-400 group-hover:text-blue-300 transition-colors" />
+                      <Users2 className="w-4 h-4 text-blue-400 group-hover:text-blue-300 transition-colors" />
                       Users
                     </button>
                   </Link>
@@ -344,7 +200,7 @@ export default function ManagementHubPage() {
                   </Link>
 
                   <Link href="/admin/withdrawals">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-emerald-950/50 transition-all duration-200 text-sm font-medium group">
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-emerald-950/70 border border-emerald-800/30 text-emerald-200 hover:text-white hover:bg-emerald-900/70 transition-all duration-200 text-sm font-medium group">
                       <Wallet2 className="w-4 h-4 text-emerald-400 group-hover:text-emerald-300 transition-colors" />
                       Withdrawals
                     </button>
@@ -382,43 +238,24 @@ export default function ManagementHubPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 relative z-10">
-
-        {/* Management Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {managementCards.map((card) => {
-            const Icon = card.icon
-            return (
-              <Card 
-                key={card.route}
-                className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm hover:border-slate-600 transition-all cursor-pointer group"
-                onClick={() => router.push(card.route)}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className={`p-3 rounded-lg ${card.bgColor} group-hover:scale-110 transition-transform`}>
-                      <Icon className={`h-6 w-6 ${card.color}`} />
-                    </div>
-                  </div>
-                  <CardTitle className="text-white mt-4">{card.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-slate-400 text-sm mb-3">{card.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-slate-300">{card.count}</span>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="text-primary hover:text-primary/80 hover:bg-primary/10"
-                    >
-                      Manage →
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+      <main className="max-w-[90rem] mx-auto px-6 py-8 relative z-10">
+        <Card className="bg-gradient-to-br from-slate-900/60 to-slate-950/60 border-slate-800/40 backdrop-blur-sm shadow-2xl">
+          <CardHeader>
+            <CardTitle className="text-white text-xl">Withdrawal Requests</CardTitle>
+            <CardDescription className="text-slate-400">Review and process player withdrawal requests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {withdrawals.length === 0 ? (
+              <div className="text-center py-12">
+                <Wallet2 className="w-16 h-16 text-slate-700 mx-auto mb-4" />
+                <p className="text-slate-400 text-lg font-medium mb-2">No withdrawals found.</p>
+                <p className="text-slate-500 text-sm mb-4">No withdrawal requests are currently at this time.</p>
+              </div>
+            ) : (
+              <DataTable columns={columns} data={withdrawals} />
+            )}
+          </CardContent>
+        </Card>
       </main>
     </div>
   )

@@ -6,39 +6,56 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Plus, Pencil, Trash2, RefreshCw, Search, ArrowLeft, ChevronDown, LayoutDashboard, Users2, LogOut, Database, HelpCircle, FolderOpen, List, Settings, Wallet2, Gift, Target, Award } from "lucide-react"
+import { AlertCircle, RefreshCw, Search, ArrowLeft, CheckCircle, XCircle, TrendingUp, Award, Target, ChevronDown, LayoutDashboard, Users2, LogOut, Database, HelpCircle, FolderOpen, List, Settings, Wallet2, Gift } from "lucide-react"
 
-interface Profile {
+interface GameAttempt {
   id: string
-  email: string
-  role: string
-  first_name: string
-  last_name: string
-  referral_code: string
-  referred_by_code: string
-  referral_bonus_points: number
-  created_at: string
+  user_id: string
+  question_id: string
+  selected_option_id: string
+  is_correct: boolean
+  points_earned: number
+  attempted_at: string
+  user?: {
+    first_name: string
+    last_name: string
+    email: string
+  }
+  question?: {
+    question_text: string
+    category: string
+    difficulty: string
+  }
 }
 
-export default function UsersManagementPage() {
+interface Stats {
+  total: number
+  correct: number
+  incorrect: number
+  totalPoints: number
+  accuracy: number
+}
+
+export default function AttemptsViewerPage() {
   const router = useRouter()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [filteredProfiles, setFilteredProfiles] = useState<Profile[]>([])
+  const [attempts, setAttempts] = useState<GameAttempt[]>([])
+  const [filteredAttempts, setFilteredAttempts] = useState<GameAttempt[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [roleFilter, setRoleFilter] = useState("all")
-  
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editMode, setEditMode] = useState(false)
-  const [currentItem, setCurrentItem] = useState<Profile | null>(null)
-  const [formData, setFormData] = useState<any>({})
+  const [filterResult, setFilterResult] = useState("all")
+  const [filterDifficulty, setFilterDifficulty] = useState("all")
+  const [stats, setStats] = useState<Stats>({
+    total: 0,
+    correct: 0,
+    incorrect: 0,
+    totalPoints: 0,
+    accuracy: 0
+  })
   
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
@@ -80,8 +97,9 @@ export default function UsersManagementPage() {
   }, [])
 
   useEffect(() => {
-    filterProfiles()
-  }, [searchTerm, roleFilter, profiles])
+    filterAttempts()
+    calculateStats()
+  }, [searchTerm, filterResult, filterDifficulty, attempts])
 
   const checkAuthAndFetch = async () => {
     const { data: userData, error: userError } = await supabase.auth.getUser()
@@ -106,102 +124,89 @@ export default function UsersManagementPage() {
 
     setAdminName(`${profileData.first_name || ""} ${profileData.last_name || ""}`.trim() || userData.user.email || "")
 
-    await fetchProfiles()
+    await fetchAttempts()
     setLoading(false)
   }
 
-  const fetchProfiles = async () => {
+  const fetchAttempts = async () => {
     setError("")
     try {
-      const { data, error } = await supabase
-        .from("profiles")
+      // Fetch attempts
+      const { data: attemptsData, error: attemptsError } = await supabase
+        .from("game_attempts")
         .select("*")
-        .order("created_at", { ascending: false })
+        .order("attempted_at", { ascending: false })
+        .limit(200)
 
-      if (error) throw error
-      setProfiles(data || [])
+      if (attemptsError) throw attemptsError
+
+      // Fetch related user data
+      const userIds = [...new Set(attemptsData?.map(a => a.user_id) || [])]
+      const { data: usersData } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, email")
+        .in("id", userIds)
+
+      // Fetch related question data
+      const questionIds = [...new Set(attemptsData?.map(a => a.question_id) || [])]
+      const { data: questionsData } = await supabase
+        .from("questions")
+        .select("id, question_text, category, difficulty")
+        .in("id", questionIds)
+
+      // Combine data
+      const enrichedAttempts = attemptsData?.map(attempt => ({
+        ...attempt,
+        user: usersData?.find(u => u.id === attempt.user_id),
+        question: questionsData?.find(q => q.id === attempt.question_id)
+      })) || []
+
+      setAttempts(enrichedAttempts)
     } catch (err: any) {
-      setError(err.message || "Failed to fetch users")
+      setError(err.message || "Failed to fetch attempts")
     }
   }
 
-  const filterProfiles = () => {
-    let filtered = profiles
+  const filterAttempts = () => {
+    let filtered = attempts
 
-    if (roleFilter !== "all") {
-      filtered = filtered.filter(p => p.role === roleFilter)
-    }
-
-    if (searchTerm) {
-      filtered = filtered.filter(p => 
-        p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.referral_code?.toLowerCase().includes(searchTerm.toLowerCase())
+    if (filterResult !== "all") {
+      filtered = filtered.filter(a => 
+        filterResult === "correct" ? a.is_correct : !a.is_correct
       )
     }
 
-    setFilteredProfiles(filtered)
-  }
-
-  const openDialog = (item: Profile | null = null) => {
-    setCurrentItem(item)
-    setEditMode(!!item)
-    setFormData(item || { role: "player", referral_bonus_points: 0 })
-    setDialogOpen(true)
-  }
-
-  const handleSave = async () => {
-    setError("")
-    setSuccess("")
-    
-    try {
-      if (editMode && currentItem) {
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            first_name: formData.first_name,
-            last_name: formData.last_name,
-            role: formData.role,
-            referral_bonus_points: formData.referral_bonus_points
-          })
-          .eq("id", currentItem.id)
-
-        if (error) throw error
-        setSuccess("User updated successfully")
-      }
-      
-      setDialogOpen(false)
-      await fetchProfiles()
-    } catch (err: any) {
-      setError(err.message || "Failed to save user")
+    if (filterDifficulty !== "all") {
+      filtered = filtered.filter(a => a.question?.difficulty === filterDifficulty)
     }
+
+    if (searchTerm) {
+      filtered = filtered.filter(a => 
+        a.user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.user?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.user?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.question?.question_text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.question?.category?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    setFilteredAttempts(filtered)
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this user? This will also delete all their game data.")) return
+  const calculateStats = () => {
+    const total = filteredAttempts.length
+    const correct = filteredAttempts.filter(a => a.is_correct).length
+    const incorrect = total - correct
+    const totalPoints = filteredAttempts.reduce((sum, a) => sum + a.points_earned, 0)
+    const accuracy = total > 0 ? (correct / total) * 100 : 0
 
-    setError("")
-    setSuccess("")
-    
-    try {
-      const { error } = await supabase.from("profiles").delete().eq("id", id)
-      if (error) throw error
-      
-      setSuccess("User deleted successfully")
-      await fetchProfiles()
-    } catch (err: any) {
-      setError(err.message || "Failed to delete user")
-    }
+    setStats({ total, correct, incorrect, totalPoints, accuracy })
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-          <div className="text-slate-300">Loading users...</div>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+        <div className="text-slate-300">Loading...</div>
       </div>
     )
   }
@@ -224,7 +229,7 @@ export default function UsersManagementPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                Users Management
+                Game Attempts
               </h1>
               <p className="text-slate-400 text-sm mt-0.5 flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
@@ -300,7 +305,7 @@ export default function UsersManagementPage() {
                   </Link>
 
                   <Link href="/admin/manage/users">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white bg-blue-950/50 transition-all duration-200 text-sm font-medium group">
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-blue-950/50 transition-all duration-200 text-sm font-medium group">
                       <Users2 className="w-4 h-4 text-blue-400 group-hover:text-blue-300 transition-colors" />
                       Users
                     </button>
@@ -328,7 +333,7 @@ export default function UsersManagementPage() {
                   </Link>
 
                   <Link href="/admin/manage/attempts">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-orange-950/50 transition-all duration-200 text-sm font-medium group">
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white bg-orange-950/50 transition-all duration-200 text-sm font-medium group">
                       <Target className="w-4 h-4 text-orange-400 group-hover:text-orange-300 transition-colors" />
                       Attempts
                     </button>
@@ -394,30 +399,87 @@ export default function UsersManagementPage() {
           </Alert>
         )}
 
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700">
+            <CardContent className="p-4">
+              <div className="text-slate-400 text-sm mb-1">Total Attempts</div>
+              <div className="text-2xl font-bold text-white">{stats.total}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-green-900/20 to-green-800/20 border-green-700">
+            <CardContent className="p-4">
+              <div className="text-green-300 text-sm mb-1 flex items-center gap-1">
+                <CheckCircle className="h-3 w-3" />
+                Correct
+              </div>
+              <div className="text-2xl font-bold text-green-400">{stats.correct}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-red-900/20 to-red-800/20 border-red-700">
+            <CardContent className="p-4">
+              <div className="text-red-300 text-sm mb-1 flex items-center gap-1">
+                <XCircle className="h-3 w-3" />
+                Incorrect
+              </div>
+              <div className="text-2xl font-bold text-red-400">{stats.incorrect}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 border-purple-700">
+            <CardContent className="p-4">
+              <div className="text-purple-300 text-sm mb-1 flex items-center gap-1">
+                <Award className="h-3 w-3" />
+                Total Points
+              </div>
+              <div className="text-2xl font-bold text-purple-400">{stats.totalPoints}</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 border-blue-700">
+            <CardContent className="p-4">
+              <div className="text-blue-300 text-sm mb-1 flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                Accuracy
+              </div>
+              <div className="text-2xl font-bold text-blue-400">{stats.accuracy.toFixed(1)}%</div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm">
           <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex flex-col lg:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
-                  placeholder="Search by name, email, or referral code..."
+                  placeholder="Search by player, question, or category..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 bg-slate-700 border-slate-600 text-white"
                 />
               </div>
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger className="w-full md:w-48 bg-slate-700 border-slate-600 text-white">
+              <Select value={filterResult} onValueChange={setFilterResult}>
+                <SelectTrigger className="w-full lg:w-40 bg-slate-700 border-slate-600 text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-700 border-slate-600">
-                  <SelectItem value="all">All Roles</SelectItem>
-                  <SelectItem value="player">Players</SelectItem>
-                  <SelectItem value="admin">Admins</SelectItem>
+                  <SelectItem value="all">All Results</SelectItem>
+                  <SelectItem value="correct">Correct Only</SelectItem>
+                  <SelectItem value="incorrect">Incorrect Only</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterDifficulty} onValueChange={setFilterDifficulty}>
+                <SelectTrigger className="w-full lg:w-40 bg-slate-700 border-slate-600 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-700 border-slate-600">
+                  <SelectItem value="all">All Difficulties</SelectItem>
+                  <SelectItem value="easy">Easy</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="hard">Hard</SelectItem>
                 </SelectContent>
               </Select>
               <Button 
-                onClick={fetchProfiles} 
+                onClick={fetchAttempts} 
                 variant="outline" 
                 className="bg-slate-700/50 border-slate-600 text-white"
               >
@@ -427,161 +489,80 @@ export default function UsersManagementPage() {
             </div>
 
             <div className="mb-4 text-slate-300">
-              Showing {filteredProfiles.length} of {profiles.length} users
+              Showing {filteredAttempts.length} of {attempts.length} attempts (latest 200)
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b border-slate-700">
-                  <tr>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Email</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Name</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Role</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Referral Code</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Bonus Points</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Created</th>
-                    <th className="text-left py-3 px-4 text-slate-300 font-semibold">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredProfiles.map((profile) => (
-                    <tr key={profile.id} className="border-b border-slate-700/50 hover:bg-slate-800/30">
-                      <td className="py-3 px-4 text-slate-200">{profile.email}</td>
-                      <td className="py-3 px-4 text-slate-200">
-                        {profile.first_name || profile.last_name 
-                          ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-                          : "-"}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          profile.role === 'admin' 
-                            ? 'bg-red-900/30 text-red-300' 
-                            : 'bg-blue-900/30 text-blue-300'
-                        }`}>
-                          {profile.role}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-200 font-mono text-sm">
-                        {profile.referral_code || "-"}
-                      </td>
-                      <td className="py-3 px-4 text-slate-200">
-                        {profile.referral_bonus_points}
-                      </td>
-                      <td className="py-3 px-4 text-slate-200">
-                        {new Date(profile.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => openDialog(profile)}
-                            className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 h-8 w-8 p-0"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(profile.id)}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-8 w-8 p-0"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+            <div className="space-y-3">
+              {filteredAttempts.map((attempt) => (
+                <Card 
+                  key={attempt.id} 
+                  className={`border-l-4 ${
+                    attempt.is_correct 
+                      ? 'bg-green-900/10 border-l-green-500' 
+                      : 'bg-red-900/10 border-l-red-500'
+                  } border-slate-700`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          {attempt.is_correct ? (
+                            <CheckCircle className="h-5 w-5 text-green-400" />
+                          ) : (
+                            <XCircle className="h-5 w-5 text-red-400" />
+                          )}
+                          <span className={`font-semibold ${
+                            attempt.is_correct ? 'text-green-300' : 'text-red-300'
+                          }`}>
+                            {attempt.is_correct ? 'Correct' : 'Incorrect'}
+                          </span>
+                          <span className="text-slate-500">•</span>
+                          <span className="text-purple-400 font-semibold">
+                            +{attempt.points_earned} pts
+                          </span>
+                          <span className="text-slate-500">•</span>
+                          <span className={`px-2 py-0.5 rounded text-xs ${
+                            attempt.question?.difficulty === 'easy' ? 'bg-green-900/30 text-green-300' : 
+                            attempt.question?.difficulty === 'medium' ? 'bg-yellow-900/30 text-yellow-300' : 
+                            'bg-red-900/30 text-red-300'
+                          }`}>
+                            {attempt.question?.difficulty}
+                          </span>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        
+                        <p className="text-white mb-2">
+                          {attempt.question?.question_text || "Question not found"}
+                        </p>
+                        
+                        <div className="flex items-center gap-4 text-sm text-slate-400">
+                          <span>
+                            Player: <span className="text-slate-300">
+                              {attempt.user?.first_name} {attempt.user?.last_name} 
+                              ({attempt.user?.email})
+                            </span>
+                          </span>
+                          <span className="text-slate-500">•</span>
+                          <span>
+                            Category: <span className="text-slate-300">{attempt.question?.category}</span>
+                          </span>
+                          <span className="text-slate-500">•</span>
+                          <span>{new Date(attempt.attempted_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
 
-              {filteredProfiles.length === 0 && (
+              {filteredAttempts.length === 0 && (
                 <div className="text-center py-12 text-slate-400">
-                  No users found matching your criteria
+                  No attempts found matching your criteria
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
       </main>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Update user profile information
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="email" className="text-slate-300">Email</Label>
-              <Input
-                id="email"
-                value={formData.email || ""}
-                disabled
-                className="bg-slate-700/50 border-slate-600 text-slate-400"
-              />
-              <p className="text-xs text-slate-500 mt-1">Email cannot be changed</p>
-            </div>
-            <div>
-              <Label htmlFor="first_name" className="text-slate-300">First Name</Label>
-              <Input
-                id="first_name"
-                value={formData.first_name || ""}
-                onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-            </div>
-            <div>
-              <Label htmlFor="last_name" className="text-slate-300">Last Name</Label>
-              <Input
-                id="last_name"
-                value={formData.last_name || ""}
-                onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-            </div>
-            <div>
-              <Label htmlFor="role" className="text-slate-300">Role</Label>
-              <Select 
-                value={formData.role || "player"} 
-                onValueChange={(val) => setFormData({...formData, role: val})}
-              >
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  <SelectItem value="player">Player</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="referral_bonus_points" className="text-slate-300">Referral Bonus Points</Label>
-              <Input
-                id="referral_bonus_points"
-                type="number"
-                value={formData.referral_bonus_points || 0}
-                onChange={(e) => setFormData({...formData, referral_bonus_points: parseInt(e.target.value) || 0})}
-                className="bg-slate-700 border-slate-600 text-white"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setDialogOpen(false)} 
-              className="bg-slate-700 border-slate-600"
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSave} className="bg-primary">
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

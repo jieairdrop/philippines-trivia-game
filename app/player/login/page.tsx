@@ -9,6 +9,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { Loader2 } from "lucide-react"
+
+async function getUserRole(supabase: any, userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single()
+
+  if (error || !data) {
+    console.error("Error fetching user role:", error)
+    return null
+  }
+
+  return data.role
+}
 
 export default function PlayerLogin() {
   const router = useRouter()
@@ -26,8 +42,10 @@ export default function PlayerLogin() {
         const { data: { session } } = await supabase.auth.getSession()
         
         if (session) {
-          // User is already logged in, redirect to player page
-          router.push("/player")
+          // Fetch user role and redirect accordingly
+          const role = await getUserRole(supabase, session.user.id)
+          const redirectTo = role === "admin" ? "/admin" : "/player"
+          router.push(redirectTo)
         }
       } catch (err) {
         console.error("Auth check error:", err)
@@ -49,15 +67,28 @@ export default function PlayerLogin() {
       const { error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/player`,
-        },
       })
 
       if (authError) throw authError
 
-      router.push("/player")
+      // Poll for the session to update after sign-in (Supabase sessions can have a slight delay)
+      let session = null
+      let attempts = 0
+      const maxAttempts = 20 // Up to 2 seconds
+      while (!session && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        const { data: { session: newSession } } = await supabase.auth.getSession()
+        session = newSession
+        attempts++
+      }
+
+      if (!session) {
+        throw new Error("Session not found after login. Please try again.")
+      }
+
+      const role = await getUserRole(supabase, session.user.id)
+      const redirectTo = role === "admin" ? "/admin" : "/player"
+      router.push(redirectTo)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
     } finally {
@@ -122,8 +153,9 @@ export default function PlayerLogin() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 to-primary/70 text-white font-semibold h-11 transition-all"
+              className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 to-primary/70 text-white font-semibold h-11 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
             >
+              <Loader2 className={`h-4 w-4 mr-2 animate-spin ${loading ? 'block' : 'hidden'}`} />
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>

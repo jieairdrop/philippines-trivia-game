@@ -9,42 +9,58 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Plus, Pencil, Trash2, RefreshCw, Search, ArrowLeft, Eye, ChevronDown, LayoutDashboard, Users2, LogOut, Database, HelpCircle as HelpCircleIcon, FolderOpen, List, Settings, Wallet2, Gift, Target, Award } from "lucide-react"
+import { AlertCircle, RefreshCw, Search, ArrowLeft, Users, Gift, CheckCircle, XCircle, Pencil, Trash2, ChevronDown, LayoutDashboard, Users2, LogOut, Database, HelpCircle, FolderOpen, List, Award, Settings, Wallet2 } from "lucide-react"
 
-interface Question {
+interface Referral {
   id: string
-  question_text: string
-  category: string
-  difficulty: string
-  points: number
-  category_id: string
+  referrer_id: string
+  referred_user_id: string
+  referral_code: string
+  bonus_points_awarded: number
+  is_rewarded: boolean
   created_at: string
-  updated_at: string
+  referrer?: {
+    first_name: string
+    last_name: string
+    email: string
+  }
+  referred_user?: {
+    first_name: string
+    last_name: string
+    email: string
+  }
 }
 
-interface Category {
-  id: string
-  name: string
+interface ReferralStats {
+  totalReferrals: number
+  rewardedReferrals: number
+  pendingReferrals: number
+  totalPointsAwarded: number
+  topReferrers: { name: string; count: number }[]
 }
 
-export default function QuestionsManagementPage() {
+export default function ReferralsManagementPage() {
   const router = useRouter()
   const supabase = createClient()
   
   const [loading, setLoading] = useState(true)
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [filteredQuestions, setFilteredQuestions] = useState<Question[]>([])
+  const [referrals, setReferrals] = useState<Referral[]>([])
+  const [filteredReferrals, setFilteredReferrals] = useState<Referral[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [difficultyFilter, setDifficultyFilter] = useState("all")
-  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [filterStatus, setFilterStatus] = useState("all")
+  const [stats, setStats] = useState<ReferralStats>({
+    totalReferrals: 0,
+    rewardedReferrals: 0,
+    pendingReferrals: 0,
+    totalPointsAwarded: 0,
+    topReferrers: []
+  })
   
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editMode, setEditMode] = useState(false)
-  const [currentItem, setCurrentItem] = useState<Question | null>(null)
+  const [currentItem, setCurrentItem] = useState<Referral | null>(null)
   const [formData, setFormData] = useState<any>({})
   
   const [error, setError] = useState("")
@@ -87,8 +103,9 @@ export default function QuestionsManagementPage() {
   }, [])
 
   useEffect(() => {
-    filterQuestions()
-  }, [searchTerm, difficultyFilter, categoryFilter, questions])
+    filterReferrals()
+    calculateStats()
+  }, [searchTerm, filterStatus, referrals])
 
   const checkAuthAndFetch = async () => {
     const { data: userData, error: userError } = await supabase.auth.getUser()
@@ -113,69 +130,103 @@ export default function QuestionsManagementPage() {
 
     setAdminName(`${profileData.first_name || ""} ${profileData.last_name || ""}`.trim() || userData.user.email || "")
 
-    await Promise.all([fetchQuestions(), fetchCategories()])
+    await fetchReferrals()
     setLoading(false)
   }
 
-  const fetchQuestions = async () => {
+  const fetchReferrals = async () => {
     setError("")
     try {
-      const { data, error } = await supabase
-        .from("questions")
+      const { data: referralsData, error: referralsError } = await supabase
+        .from("referrals")
         .select("*")
         .order("created_at", { ascending: false })
 
-      if (error) throw error
-      setQuestions(data || [])
+      if (referralsError) throw referralsError
+
+      // Fetch referrer data
+      const referrerIds = [...new Set(referralsData?.map(r => r.referrer_id) || [])]
+      const { data: referrersData } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, email")
+        .in("id", referrerIds)
+
+      // Fetch referred user data
+      const referredIds = [...new Set(referralsData?.map(r => r.referred_user_id) || [])]
+      const { data: referredData } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, email")
+        .in("id", referredIds)
+
+      const enrichedReferrals = referralsData?.map(referral => ({
+        ...referral,
+        referrer: referrersData?.find(u => u.id === referral.referrer_id),
+        referred_user: referredData?.find(u => u.id === referral.referred_user_id)
+      })) || []
+
+      setReferrals(enrichedReferrals)
     } catch (err: any) {
-      setError(err.message || "Failed to fetch questions")
+      setError(err.message || "Failed to fetch referrals")
     }
   }
 
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("categories")
-        .select("id, name")
-        .eq("is_active", true)
-        .order("name")
+  const filterReferrals = () => {
+    let filtered = referrals
 
-      if (error) throw error
-      setCategories(data || [])
-    } catch (err: any) {
-      console.error("Failed to fetch categories:", err)
-    }
-  }
-
-  const filterQuestions = () => {
-    let filtered = questions
-
-    if (difficultyFilter !== "all") {
-      filtered = filtered.filter(q => q.difficulty === difficultyFilter)
-    }
-
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter(q => q.category === categoryFilter)
+    if (filterStatus === "rewarded") {
+      filtered = filtered.filter(r => r.is_rewarded)
+    } else if (filterStatus === "pending") {
+      filtered = filtered.filter(r => !r.is_rewarded)
     }
 
     if (searchTerm) {
-      filtered = filtered.filter(q => 
-        q.question_text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        q.category.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(r => 
+        r.referrer?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referrer?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referrer?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referred_user?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referred_user?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referred_user?.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.referral_code?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
-    setFilteredQuestions(filtered)
+    setFilteredReferrals(filtered)
   }
 
-  const openDialog = (item: Question | null = null) => {
+  const calculateStats = () => {
+    const totalReferrals = filteredReferrals.length
+    const rewardedReferrals = filteredReferrals.filter(r => r.is_rewarded).length
+    const pendingReferrals = totalReferrals - rewardedReferrals
+    const totalPointsAwarded = filteredReferrals
+      .filter(r => r.is_rewarded)
+      .reduce((sum, r) => sum + r.bonus_points_awarded, 0)
+
+    // Calculate top referrers
+    const referrerCounts = new Map<string, { name: string; count: number }>()
+    referrals.forEach(r => {
+      if (r.referrer) {
+        const name = `${r.referrer.first_name} ${r.referrer.last_name}`
+        const existing = referrerCounts.get(r.referrer_id)
+        if (existing) {
+          existing.count++
+        } else {
+          referrerCounts.set(r.referrer_id, { name, count: 1 })
+        }
+      }
+    })
+
+    const topReferrers = Array.from(referrerCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+
+    setStats({ totalReferrals, rewardedReferrals, pendingReferrals, totalPointsAwarded, topReferrers })
+  }
+
+  const openDialog = (item: Referral | null = null) => {
     setCurrentItem(item)
     setEditMode(!!item)
-    setFormData(item || { 
-      difficulty: "medium", 
-      points: 10,
-      category: categories[0]?.name || ""
-    })
+    setFormData(item || { is_rewarded: false, bonus_points_awarded: 100 })
     setDialogOpen(true)
   }
 
@@ -183,75 +234,69 @@ export default function QuestionsManagementPage() {
     setError("")
     setSuccess("")
     
-    if (!formData.question_text || !formData.category) {
-      setError("Question text and category are required")
-      return
-    }
-    
     try {
-      const saveData = {
-        question_text: formData.question_text,
-        category: formData.category,
-        difficulty: formData.difficulty,
-        points: formData.points,
-        category_id: formData.category_id || null
-      }
-
       if (editMode && currentItem) {
         const { error } = await supabase
-          .from("questions")
-          .update(saveData)
+          .from("referrals")
+          .update({
+            bonus_points_awarded: formData.bonus_points_awarded,
+            is_rewarded: formData.is_rewarded
+          })
           .eq("id", currentItem.id)
 
         if (error) throw error
-        setSuccess("Question updated successfully")
-      } else {
-        const { error } = await supabase
-          .from("questions")
-          .insert(saveData)
-
-        if (error) throw error
-        setSuccess("Question created successfully. Don't forget to add answer options!")
+        setSuccess("Referral updated successfully")
       }
       
       setDialogOpen(false)
-      await fetchQuestions()
+      await fetchReferrals()
     } catch (err: any) {
-      setError(err.message || "Failed to save question")
+      setError(err.message || "Failed to save referral")
     }
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this question? This will also delete all associated answer options.")) return
+    if (!confirm("Are you sure you want to delete this referral?")) return
 
     setError("")
     setSuccess("")
     
     try {
-      const { error } = await supabase.from("questions").delete().eq("id", id)
+      const { error } = await supabase.from("referrals").delete().eq("id", id)
       if (error) throw error
       
-      setSuccess("Question deleted successfully")
-      await fetchQuestions()
+      setSuccess("Referral deleted successfully")
+      await fetchReferrals()
     } catch (err: any) {
-      setError(err.message || "Failed to delete question")
+      setError(err.message || "Failed to delete referral")
     }
   }
 
-  const viewOptions = (questionId: string) => {
-    router.push(`/admin/manage/options?question=${questionId}`)
+  const toggleRewardStatus = async (referral: Referral) => {
+    try {
+      const { error } = await supabase
+        .from("referrals")
+        .update({ is_rewarded: !referral.is_rewarded })
+        .eq("id", referral.id)
+
+      if (error) throw error
+      setSuccess(`Referral ${referral.is_rewarded ? 'unrewarded' : 'rewarded'} successfully`)
+      await fetchReferrals()
+    } catch (err: any) {
+      setError("Failed to update reward status")
+    }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
         <div className="text-slate-300">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Animated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-20 right-10 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
@@ -268,7 +313,7 @@ export default function QuestionsManagementPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent">
-                Questions Management
+                Referrals Management
               </h1>
               <p className="text-slate-400 text-sm mt-0.5 flex items-center gap-2">
                 <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
@@ -358,8 +403,8 @@ export default function QuestionsManagementPage() {
                   </Link>
 
                   <Link href="/admin/manage/questions">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white bg-green-950/50 transition-all duration-200 text-sm font-medium group">
-                      <HelpCircleIcon className="w-4 h-4 text-green-400 group-hover:text-green-300 transition-colors" />
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-green-950/50 transition-all duration-200 text-sm font-medium group">
+                      <HelpCircle className="w-4 h-4 text-green-400 group-hover:text-green-300 transition-colors" />
                       Questions
                     </button>
                   </Link>
@@ -373,13 +418,13 @@ export default function QuestionsManagementPage() {
 
                   <Link href="/admin/manage/attempts">
                     <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-orange-950/50 transition-all duration-200 text-sm font-medium group">
-                      <Target className="w-4 h-4 text-orange-400 group-hover:text-orange-300 transition-colors" />
+                      <Users className="w-4 h-4 text-orange-400 group-hover:text-orange-300 transition-colors" />
                       Attempts
                     </button>
                   </Link>
 
                   <Link href="/admin/manage/referrals">
-                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-pink-950/50 transition-all duration-200 text-sm font-medium group">
+                    <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white bg-pink-950/50 transition-all duration-200 text-sm font-medium group">
                       <Gift className="w-4 h-4 text-pink-400 group-hover:text-pink-300 transition-colors" />
                       Referrals
                     </button>
@@ -438,108 +483,198 @@ export default function QuestionsManagementPage() {
           </Alert>
         )}
 
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-blue-400" />
+                <div className="text-slate-400 text-sm">Total Referrals</div>
+              </div>
+              <div className="text-3xl font-bold text-white">{stats.totalReferrals}</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-green-900/20 to-green-800/20 border-green-700">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="h-4 w-4 text-green-400" />
+                <div className="text-green-300 text-sm">Rewarded</div>
+              </div>
+              <div className="text-3xl font-bold text-green-400">{stats.rewardedReferrals}</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-yellow-900/20 to-yellow-800/20 border-yellow-700">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <XCircle className="h-4 w-4 text-yellow-400" />
+                <div className="text-yellow-300 text-sm">Pending</div>
+              </div>
+              <div className="text-3xl font-bold text-yellow-400">{stats.pendingReferrals}</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 border-purple-700">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Gift className="h-4 w-4 text-purple-400" />
+                <div className="text-purple-300 text-sm">Points Awarded</div>
+              </div>
+              <div className="text-3xl font-bold text-purple-400">{stats.totalPointsAwarded}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Top Referrers */}
+        {stats.topReferrers.length > 0 && (
+          <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 mb-6">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Top Referrers</h3>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                {stats.topReferrers.map((referrer, index) => (
+                  <div key={index} className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-primary font-bold">
+                      #{index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium truncate">{referrer.name}</p>
+                      <p className="text-slate-400 text-sm">{referrer.count} referral{referrer.count > 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700 backdrop-blur-sm">
           <CardContent className="p-6">
             <div className="flex flex-col lg:flex-row gap-4 mb-6">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
-                  placeholder="Search questions..."
+                  placeholder="Search by referrer, referred user, or code..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 bg-slate-700 border-slate-600 text-white"
                 />
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full lg:w-48 bg-slate-700 border-slate-600 text-white">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {Array.from(new Set(questions.map(q => q.category))).map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
-                <SelectTrigger className="w-full lg:w-48 bg-slate-700 border-slate-600 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  <SelectItem value="all">All Difficulties</SelectItem>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Button
+                  variant={filterStatus === "all" ? "default" : "outline"}
+                  onClick={() => setFilterStatus("all")}
+                  className={filterStatus === "all" ? "bg-primary" : "bg-slate-700/50 border-slate-600 text-white"}
+                >
+                  All
+                </Button>
+                <Button
+                  variant={filterStatus === "rewarded" ? "default" : "outline"}
+                  onClick={() => setFilterStatus("rewarded")}
+                  className={filterStatus === "rewarded" ? "bg-green-600" : "bg-slate-700/50 border-slate-600 text-white"}
+                >
+                  Rewarded
+                </Button>
+                <Button
+                  variant={filterStatus === "pending" ? "default" : "outline"}
+                  onClick={() => setFilterStatus("pending")}
+                  className={filterStatus === "pending" ? "bg-yellow-600" : "bg-slate-700/50 border-slate-600 text-white"}
+                >
+                  Pending
+                </Button>
+              </div>
               <Button 
-                onClick={fetchQuestions} 
+                onClick={fetchReferrals} 
                 variant="outline" 
                 className="bg-slate-700/50 border-slate-600 text-white"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
-              <Button onClick={() => openDialog()} className="bg-primary">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Question
-              </Button>
             </div>
 
             <div className="mb-4 text-slate-300">
-              Showing {filteredQuestions.length} of {questions.length} questions
+              Showing {filteredReferrals.length} of {referrals.length} referrals
             </div>
 
-            <div className="space-y-4">
-              {filteredQuestions.map((question) => (
-                <Card key={question.id} className="bg-slate-800/50 border-slate-700">
+            <div className="space-y-3">
+              {filteredReferrals.map((referral) => (
+                <Card 
+                  key={referral.id} 
+                  className={`border-l-4 ${
+                    referral.is_rewarded 
+                      ? 'bg-green-900/10 border-l-green-500' 
+                      : 'bg-yellow-900/10 border-l-yellow-500'
+                  } border-slate-700`}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            question.difficulty === 'easy' ? 'bg-green-900/30 text-green-300' : 
-                            question.difficulty === 'medium' ? 'bg-yellow-900/30 text-yellow-300' : 
-                            'bg-red-900/30 text-red-300'
+                          {referral.is_rewarded ? (
+                            <CheckCircle className="h-5 w-5 text-green-400" />
+                          ) : (
+                            <XCircle className="h-5 w-5 text-yellow-400" />
+                          )}
+                          <span className={`font-semibold ${
+                            referral.is_rewarded ? 'text-green-300' : 'text-yellow-300'
                           }`}>
-                            {question.difficulty}
+                            {referral.is_rewarded ? 'Rewarded' : 'Pending'}
                           </span>
-                          <span className="px-2 py-1 rounded text-xs bg-blue-900/30 text-blue-300">
-                            {question.category}
+                          <span className="text-slate-500">•</span>
+                          <span className="text-purple-400 font-semibold">
+                            {referral.bonus_points_awarded} pts
                           </span>
-                          <span className="px-2 py-1 rounded text-xs bg-purple-900/30 text-purple-300">
-                            {question.points} pts
+                          <span className="text-slate-500">•</span>
+                          <span className="text-slate-400 font-mono text-sm">
+                            {referral.referral_code}
                           </span>
                         </div>
-                        <p className="text-white text-lg mb-2">{question.question_text}</p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                          <div>
+                            <p className="text-slate-400 text-sm">Referrer:</p>
+                            <p className="text-white">
+                              {referral.referrer?.first_name} {referral.referrer?.last_name}
+                            </p>
+                            <p className="text-slate-400 text-sm">{referral.referrer?.email}</p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400 text-sm">Referred User:</p>
+                            <p className="text-white">
+                              {referral.referred_user?.first_name} {referral.referred_user?.last_name}
+                            </p>
+                            <p className="text-slate-400 text-sm">{referral.referred_user?.email}</p>
+                          </div>
+                        </div>
+                        
                         <p className="text-slate-400 text-sm">
-                          Created: {new Date(question.created_at).toLocaleDateString()}
+                          Created: {new Date(referral.created_at).toLocaleString()}
                         </p>
                       </div>
+                      
                       <div className="flex flex-col gap-2">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => viewOptions(question.id)}
-                          className="bg-slate-700/50 border-slate-600 text-white hover:bg-slate-600"
+                          onClick={() => toggleRewardStatus(referral)}
+                          className={referral.is_rewarded ? "bg-yellow-600 hover:bg-yellow-700" : "bg-green-600 hover:bg-green-700"}
                         >
-                          <Eye className="h-3 w-3 mr-1" />
-                          Options
+                          {referral.is_rewarded ? "Unreward" : "Mark Rewarded"}
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
-                          onClick={() => openDialog(question)}
-                          className="text-blue-400 hover:text-blue-300 hover:bg-blue-900/20"
+                          variant="outline"
+                          onClick={() => openDialog(referral)}
+                          className="bg-slate-700/50 border-slate-600 text-white"
                         >
                           <Pencil className="h-3 w-3 mr-1" />
                           Edit
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(question.id)}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                          variant="outline"
+                          onClick={() => handleDelete(referral.id)}
+                          className="bg-red-900/20 border-red-700 text-red-300"
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
                           Delete
@@ -550,9 +685,9 @@ export default function QuestionsManagementPage() {
                 </Card>
               ))}
 
-              {filteredQuestions.length === 0 && (
+              {filteredReferrals.length === 0 && (
                 <div className="text-center py-12 text-slate-400">
-                  No questions found matching your criteria
+                  No referrals found matching your criteria
                 </div>
               )}
             </div>
@@ -561,69 +696,34 @@ export default function QuestionsManagementPage() {
       </main>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editMode ? "Edit" : "Create"} Question</DialogTitle>
+            <DialogTitle>Edit Referral</DialogTitle>
             <DialogDescription className="text-slate-400">
-              {editMode ? "Update question details" : "Create a new trivia question"}
+              Update referral details
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="question_text" className="text-slate-300">Question Text *</Label>
-              <Textarea
-                id="question_text"
-                value={formData.question_text || ""}
-                onChange={(e) => setFormData({...formData, question_text: e.target.value})}
-                className="bg-slate-700 border-slate-600 text-white"
-                placeholder="Enter your trivia question..."
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="category" className="text-slate-300">Category *</Label>
-                <Select 
-                  value={formData.category || ""} 
-                  onValueChange={(val) => setFormData({...formData, category: val})}
-                >
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-700 border-slate-600">
-                    {Array.from(new Set(questions.map(q => q.category))).map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="difficulty" className="text-slate-300">Difficulty</Label>
-                <Select 
-                  value={formData.difficulty || "medium"} 
-                  onValueChange={(val) => setFormData({...formData, difficulty: val})}
-                >
-                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-700 border-slate-600">
-                    <SelectItem value="easy">Easy</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="hard">Hard</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="points" className="text-slate-300">Points</Label>
+              <Label htmlFor="bonus_points_awarded" className="text-slate-300">Bonus Points</Label>
               <Input
-                id="points"
+                id="bonus_points_awarded"
                 type="number"
-                value={formData.points || 10}
-                onChange={(e) => setFormData({...formData, points: parseInt(e.target.value) || 10})}
+                value={formData.bonus_points_awarded || 100}
+                onChange={(e) => setFormData({...formData, bonus_points_awarded: parseInt(e.target.value) || 100})}
                 className="bg-slate-700 border-slate-600 text-white"
-                min="1"
+                min="0"
               />
+            </div>
+            <div className="flex items-center space-x-2 p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+              <Checkbox
+                id="is_rewarded"
+                checked={formData.is_rewarded ?? false}
+                onCheckedChange={(checked) => setFormData({...formData, is_rewarded: checked})}
+              />
+              <Label htmlFor="is_rewarded" className="text-slate-300 cursor-pointer">
+                Mark as rewarded
+              </Label>
             </div>
           </div>
           <DialogFooter>
@@ -635,7 +735,7 @@ export default function QuestionsManagementPage() {
               Cancel
             </Button>
             <Button onClick={handleSave} className="bg-primary">
-              {editMode ? "Save Changes" : "Create Question"}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>
