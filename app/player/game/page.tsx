@@ -86,7 +86,7 @@ export default function GamePlay() {
         existingScript.remove()
       }
       
-      const existingContainer = document.getElementById('container-7fd7d00e06123469439fcfd76d66cddf')
+      const existingContainer = document.getElementById('container-c4083c0148f120ec11c04b6b14d2ffa4')
       if (existingContainer) {
         existingContainer.innerHTML = ''
       }
@@ -94,7 +94,7 @@ export default function GamePlay() {
       // Create and append new script
       const script = document.createElement('script')
       script.id = 'ad-script'
-      script.src = '//pl28003001.effectivegatecpm.com/7fd7d00e06123469439fcfd76d66cddf/invoke.js'
+      script.src = '//pl28019340.effectivegatecpm.com/c4083c0148f120ec11c04b6b14d2ffa4/invoke.js'
       script.async = true
       script.setAttribute('data-cfasync', 'false')
       document.body.appendChild(script)
@@ -424,7 +424,7 @@ export default function GamePlay() {
           <CardContent className="space-y-6">
             {/* Ad Banner */}
             <div className="bg-gradient-to-br from-accent to-accent/80 p-8 rounded-xl text-center border-2 border-accent/50">
-              <div id="container-7fd7d00e06123469439fcfd76d66cddf"></div>
+              <div id="container-c4083c0148f120ec11c04b6b14d2ffa4"></div>
             </div>
 
             <div className="space-y-3">
